@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="DreamSphere - AI-gestützte Traumanalyse">
+    <title>DreamSphere - AI Dream Journal</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="DreamSphere">
+    
+    <!-- Links -->
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180x180.png">
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1 class="app-title">🌙 DreamSphere</h1>
+            <p class="app-subtitle">Entdecke die Geheimnisse deiner Träume</p>
+        </header>
+
+        <main class="main-content">
+            <!-- New Dream View -->
+            <section id="view-new-dream" class="view">
+                <div class="card">
+                    <h2>Neuer Traum</h2>
+                    
+                    <div class="form-group">
+                        <label for="context-input">Wie warst du vor dem Schlafen gestimmt?</label>
+                        <input type="text" id="context-input" placeholder="z.B. gestresst, entspannt, aufgeregt...">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dream-input">Beschreibe deinen Traum</label>
+                        <textarea id="dream-input" placeholder="Erzähle von deinem Traum..." rows="8"></textarea>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button id="record-btn" class="btn btn-secondary">
+                            🎤 Aufnehmen
+                        </button>
+                        <button id="save-dream-btn" class="btn btn-primary">
+                            💾 Traum speichern
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Logbook View -->
+            <section id="view-logbook" class="view">
+                <div class="logbook-header">
+                    <h2>Traum-Logbuch</h2>
+                    <p class="logbook-subtitle">Deine gespeicherten Träume</p>
+                </div>
+                <div id="dreams-container" class="dreams-container">
+                    <!-- Dreams will be rendered here -->
+                </div>
+            </section>
+
+            <!-- Dream Detail View -->
+            <section id="view-dream-detail" class="view">
+                <div class="dream-detail-card">
+                    <div class="dream-header">
+                        <h2 id="dream-detail-date"></h2>
+                        <div class="dream-header-actions">
+                            <button id="delete-dream-btn" class="btn btn-danger" title="Gesamten Traum löschen">
+                                🗑️ Traum löschen
+                            </button>
+                            <button id="back-to-logbook" class="btn btn-ghost">← Zurück</button>
+                        </div>
+                    </div>
+                    
+                    <div class="dream-content">
+                        <div class="context-section">
+                            <h3>Stimmung vor dem Schlafen</h3>
+                            <p id="dream-detail-context"></p>
+                        </div>
+                        
+                        <div class="dream-text-section">
+                            <div class="section-title">
+                                <h3>Traum</h3>
+                                <button id="copy-dream-btn" class="btn btn-secondary btn-sm" title="Traumtext kopieren">📋 Kopieren</button>
+                            </div>
+                            <p id="dream-detail-text"></p>
+                        </div>
+                    </div>
+                    
+                    <div class="analysis-section">
+                        <h3>Analyse-Optionen</h3>
+                        <div class="analysis-buttons">
+                            <button id="analyze-jungian" class="btn btn-analysis" data-method="jungian">
+                                🧠 Jung'sche Analyse
+                            </button>
+                            <button id="analyze-freudian" class="btn btn-analysis" data-method="freudian">
+                                🔍 Freud'sche Analyse
+                            </button>
+                            <button id="analyze-sentiment" class="btn btn-analysis" data-method="sentiment">
+                                😊 Sentiment-Analyse
+                            </button>
+                            <button id="analyze-archetypes" class="btn btn-analysis" data-method="archetypes">
+                                🎭 Archetypen-Analyse
+                            </button>
+                            <button id="analyze-what-if" class="btn btn-analysis" data-method="what_if">
+                                🤔 Was wäre wenn?
+                            </button>
+                            <button id="create-poem" class="btn btn-analysis" data-method="poem">
+                                📝 Traum-Poesie
+                            </button>
+                        </div>
+                        
+                        <div class="analysis-management">
+                            <button id="delete-all-analyses-btn" class="btn btn-warning" title="Alle Analysen dieses Traums löschen">
+                                🗑️ Alle Analysen löschen
+                            </button>
+                        </div>
+                        
+                        <div id="analysis-results" class="analysis-results">
+                            <!-- Analysis results will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <nav class="bottom-nav">
+                <button id="nav-new-dream" class="nav-btn active">
+                    <span class="nav-icon">✨</span>
+                    <span class="nav-label">Neuer Traum</span>
+                </button>
+                <button id="nav-logbook" class="nav-btn">
+                    <span class="nav-icon">📚</span>
+                    <span class="nav-label">Logbuch</span>
+                </button>
+            </nav>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Analysiere Traum...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="storage.js" defer></script>
+    <script src="ui.js" defer></script>
+    <script src="app.js" defer></script>
+</body>
+</html>
