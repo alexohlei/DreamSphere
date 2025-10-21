@@ -238,16 +238,32 @@ class DreamSphereApp {
             // MediaRecorder erstellen
             this.mediaRecorder = new MediaRecorder(stream);
             this.audioChunks = [];
+            this.currentRecordingSize = 0;
 
             // Event-Handler
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
                     this.audioChunks.push(event.data);
+                    this.currentRecordingSize += event.data.size;
+
+                    // Größencheck: 24 MB Limit
+                    const maxSize = 24 * 1024 * 1024; // 24 MB
+                    if (this.currentRecordingSize > maxSize) {
+                        console.log('Maximale Dateigröße erreicht, stoppe Aufnahme');
+                        dreamUI.showWarning('Maximale Dateigröße (24 MB) erreicht. Aufnahme wird beendet.');
+                        this.stopRecording();
+                    }
                 }
             };
 
             this.mediaRecorder.onstop = async () => {
                 console.log('Aufnahme beendet, starte Transkription...');
+
+                // Auto-Stop-Timer löschen falls vorhanden
+                if (this.recordingTimeout) {
+                    clearTimeout(this.recordingTimeout);
+                    this.recordingTimeout = null;
+                }
 
                 // Audio-Blob erstellen
                 const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
@@ -258,16 +274,30 @@ class DreamSphereApp {
                 // Wake Lock freigeben
                 await this.releaseWakeLock();
 
+                // Größe zurücksetzen
+                this.currentRecordingSize = 0;
+
                 // Transkription starten
                 await this.transcribeAudio(audioBlob);
             };
 
-            // Aufnahme starten
-            this.mediaRecorder.start();
+            // Aufnahme starten mit timeslice für regelmäßige Größenprüfung
+            // timeslice: 1000ms = jede Sekunde wird ondataavailable aufgerufen
+            this.mediaRecorder.start(1000);
             this.isRecording = true;
             this.updateRecordButton(true);
 
-            console.log('Audio-Aufnahme gestartet');
+            // Timer-Anzeige im Textfeld starten
+            this.startRecordingTimer();
+
+            // Auto-Stop nach 9 Minuten (540 Sekunden)
+            this.recordingTimeout = setTimeout(() => {
+                console.log('Auto-Stop nach 9 Minuten');
+                dreamUI.showWarning('Maximale Aufnahmedauer (9 Min) erreicht. Aufnahme wird beendet.');
+                this.stopRecording();
+            }, 540000); // 9 Minuten = 540000 ms
+
+            console.log('Audio-Aufnahme gestartet (max. 9 Minuten)');
 
         } catch (error) {
             // Wake Lock freigeben bei Fehler
@@ -290,7 +320,44 @@ class DreamSphereApp {
             this.mediaRecorder.stop();
             this.isRecording = false;
             this.updateRecordButton(false);
+            this.stopRecordingTimer();
             console.log('Stoppe Audio-Aufnahme...');
+        }
+    }
+
+    // Timer für Aufnahme-Anzeige starten
+    startRecordingTimer() {
+        const dreamInput = document.getElementById('dream-input');
+        if (!dreamInput) return;
+
+        // Ursprünglichen Wert speichern
+        this.recordingOriginalValue = dreamInput.value;
+        this.recordingOriginalPlaceholder = dreamInput.placeholder;
+
+        // Timer-Variablen initialisieren
+        this.recordingStartTime = Date.now();
+        this.recordingTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - this.recordingStartTime) / 1000); // Sekunden
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+
+            // Format: MM:SS / 09:00
+            const currentTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            dreamInput.placeholder = `🎙️ Aufnahme läuft... ${currentTime} / 09:00`;
+        }, 1000);
+    }
+
+    // Timer für Aufnahme-Anzeige stoppen
+    stopRecordingTimer() {
+        if (this.recordingTimerInterval) {
+            clearInterval(this.recordingTimerInterval);
+            this.recordingTimerInterval = null;
+        }
+
+        // Placeholder zurücksetzen
+        const dreamInput = document.getElementById('dream-input');
+        if (dreamInput && this.recordingOriginalPlaceholder !== undefined) {
+            dreamInput.placeholder = this.recordingOriginalPlaceholder;
         }
     }
 

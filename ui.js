@@ -527,7 +527,7 @@ class DreamUI {
                     <span class="success-message">${message}</span>
                 </div>
             `;
-            
+
             // Füge CSS-Styles hinzu falls nicht vorhanden
             if (!document.querySelector('#success-toast-styles')) {
                 const style = document.createElement('style');
@@ -554,18 +554,71 @@ class DreamUI {
                 `;
                 document.head.appendChild(style);
             }
-            
+
             document.body.appendChild(successToast);
-            
+
             // Automatisch entfernen
             setTimeout(() => {
                 if (successToast.parentElement) {
                     successToast.remove();
                 }
             }, duration);
-            
+
         } catch (error) {
             console.error('Fehler beim Anzeigen der Erfolgs-Nachricht:', error);
+        }
+    }
+
+    // Warn-Nachricht anzeigen
+    showWarning(message, duration = 4000) {
+        try {
+            const warningToast = document.createElement('div');
+            warningToast.className = 'warning-toast';
+            warningToast.innerHTML = `
+                <div class="warning-content">
+                    <span class="warning-icon">⚠️</span>
+                    <span class="warning-message">${message}</span>
+                </div>
+            `;
+
+            // Füge CSS-Styles hinzu falls nicht vorhanden
+            if (!document.querySelector('#warning-toast-styles')) {
+                const style = document.createElement('style');
+                style.id = 'warning-toast-styles';
+                style.textContent = `
+                    .warning-toast {
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        background: #ff9800;
+                        color: white;
+                        padding: var(--spacing-md);
+                        border-radius: var(--border-radius);
+                        box-shadow: var(--shadow-lg);
+                        z-index: 1001;
+                        animation: slideIn 0.3s ease-out;
+                        max-width: 300px;
+                    }
+                    .warning-content {
+                        display: flex;
+                        align-items: center;
+                        gap: var(--spacing-sm);
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            document.body.appendChild(warningToast);
+
+            // Automatisch entfernen
+            setTimeout(() => {
+                if (warningToast.parentElement) {
+                    warningToast.remove();
+                }
+            }, duration);
+
+        } catch (error) {
+            console.error('Fehler beim Anzeigen der Warn-Nachricht:', error);
         }
     }
 

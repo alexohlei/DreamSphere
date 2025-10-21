@@ -1,0 +1,16 @@
+# Konfigurationsdateien mit sensiblen Daten
+config.php
+
+# Rate Limiting Dateien
+transcribe_rate_limit.json
+
+# Temporäre Dateien
+*.tmp
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

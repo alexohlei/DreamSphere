@@ -1,5 +1,5 @@
 // Service Worker für DreamSphere PWA
-const CACHE_NAME = 'dreamsphere-v1.0.0';
+const CACHE_NAME = 'dreamsphere-v1.1.0';
 const STATIC_CACHE_URLS = [
     '/',
     '/index.html',
@@ -8,6 +8,14 @@ const STATIC_CACHE_URLS = [
     '/ui.js',
     '/storage.js',
     '/manifest.json'
+];
+
+// Dateien die immer frisch vom Netzwerk geladen werden sollen
+const NETWORK_FIRST_URLS = [
+    '/app.js',
+    '/ui.js',
+    '/storage.js',
+    '/style.css'
 ];
 
 // Installation des Service Workers
@@ -61,7 +69,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     // API-Calls nicht cachen
-    if (event.request.url.includes('/api.php')) {
+    if (event.request.url.includes('/api.php') || event.request.url.includes('/transcribe.php')) {
         event.respondWith(
             fetch(event.request)
                 .catch(() => {
@@ -84,45 +92,72 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Cache First Strategy für statische Ressourcen
-    event.respondWith(
-        caches.match(event.request)
-            .then((cachedResponse) => {
-                if (cachedResponse) {
-                    console.log('Service Worker: Serving from cache', event.request.url);
-                    return cachedResponse;
-                }
+    // Prüfe ob URL Network First verwenden soll
+    const url = new URL(event.request.url);
+    const useNetworkFirst = NETWORK_FIRST_URLS.some(path => url.pathname.endsWith(path));
 
-                console.log('Service Worker: Fetching from network', event.request.url);
-                return fetch(event.request)
-                    .then((response) => {
-                        // Nur erfolgreiche Responses cachen
-                        if (!response || response.status !== 200 || response.type !== 'basic') {
-                            return response;
-                        }
-
-                        // Response klonen für Cache
+    if (useNetworkFirst) {
+        // Network First Strategy für JS/CSS - immer aktuelle Version laden
+        event.respondWith(
+            fetch(event.request)
+                .then((response) => {
+                    // Nur erfolgreiche Responses cachen
+                    if (response && response.status === 200 && response.type === 'basic') {
                         const responseToCache = response.clone();
-
                         caches.open(CACHE_NAME)
                             .then((cache) => {
                                 cache.put(event.request, responseToCache);
                             });
+                    }
+                    return response;
+                })
+                .catch((error) => {
+                    console.log('Service Worker: Network failed, trying cache', event.request.url);
+                    // Fallback zu Cache wenn Netzwerk nicht verfügbar
+                    return caches.match(event.request);
+                })
+        );
+    } else {
+        // Cache First Strategy für statische Ressourcen (Icons, Manifest, etc.)
+        event.respondWith(
+            caches.match(event.request)
+                .then((cachedResponse) => {
+                    if (cachedResponse) {
+                        console.log('Service Worker: Serving from cache', event.request.url);
+                        return cachedResponse;
+                    }
 
-                        return response;
-                    })
-                    .catch((error) => {
-                        console.error('Service Worker: Fetch failed', error);
-                        
-                        // Fallback für HTML-Requests
-                        if (event.request.headers.get('accept').includes('text/html')) {
-                            return caches.match('/index.html');
-                        }
-                        
-                        throw error;
-                    });
-            })
-    );
+                    console.log('Service Worker: Fetching from network', event.request.url);
+                    return fetch(event.request)
+                        .then((response) => {
+                            // Nur erfolgreiche Responses cachen
+                            if (!response || response.status !== 200 || response.type !== 'basic') {
+                                return response;
+                            }
+
+                            // Response klonen für Cache
+                            const responseToCache = response.clone();
+
+                            caches.open(CACHE_NAME)
+                                .then((cache) => {
+                                    cache.put(event.request, responseToCache);
+                                });
+
+                            return response;
+                        })
+                        .catch((error) => {
+                            console.error('Service Worker: Fetch failed', error);
+
+                            // Fallback für HTML-Requests
+                            if (event.request.headers.get('accept').includes('text/html')) {
+                                return caches.match('/index.html');
+                            }
+
+                            throw error;
+                        });
+                })
+        );
+    }
 });
 
 // Background Sync für offline Funktionalität
