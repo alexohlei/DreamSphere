@@ -3,10 +3,12 @@
 
 class DreamSphereApp {
     constructor() {
-        this.speechRecognition = null;
+        this.mediaRecorder = null;
+        this.audioChunks = [];
         this.isRecording = false;
         this.isOnline = navigator.onLine;
-        
+        this.wakeLock = null;
+
         // Initialisierung nach DOM-Load
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.initialize());
@@ -22,10 +24,10 @@ class DreamSphereApp {
             
             // Service Worker registrieren
             await this.registerServiceWorker();
-            
-            // Spracherkennung initialisieren
-            this.initializeSpeechRecognition();
-            
+
+            // Audio-Aufnahme initialisieren
+            await this.initializeAudioRecording();
+
             // Event-Listeners einrichten
             this.setupEventListeners();
             
@@ -66,50 +68,22 @@ class DreamSphereApp {
         }
     }
 
-    // Spracherkennung initialisieren
-    initializeSpeechRecognition() {
+    // Audio-Aufnahme initialisieren
+    async initializeAudioRecording() {
         try {
-            // Prüfe Browser-Unterstützung
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            if (!SpeechRecognition) {
-                console.warn('Spracherkennung wird von diesem Browser nicht unterstützt');
-                this.disableSpeechRecognition();
+            // Prüfe Browser-Unterstützung für MediaRecorder
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.warn('Audio-Aufnahme wird von diesem Browser nicht unterstützt');
+                this.disableAudioRecording();
                 return;
             }
 
-            this.speechRecognition = new SpeechRecognition();
-            
-            // Konfiguration
-            this.speechRecognition.continuous = true;
-            this.speechRecognition.interimResults = true;
-            this.speechRecognition.lang = 'de-DE';
-            
-            // Event-Handler
-            this.speechRecognition.onstart = () => {
-                console.log('Spracherkennung gestartet');
-                this.isRecording = true;
-                this.updateRecordButton(true);
-            };
-            
-            this.speechRecognition.onresult = (event) => {
-                this.handleSpeechResult(event);
-            };
-            
-            this.speechRecognition.onerror = (event) => {
-                console.error('Spracherkennungsfehler:', event.error);
-                this.handleSpeechError(event.error);
-            };
-            
-            this.speechRecognition.onend = () => {
-                console.log('Spracherkennung beendet');
-                this.isRecording = false;
-                this.updateRecordButton(false);
-            };
-            
+            // Mikrofon-Berechtigung wird beim ersten Aufnahme-Start angefordert
+            console.log('Audio-Aufnahme bereit');
+
         } catch (error) {
-            console.error('Fehler bei Spracherkennung-Initialisierung:', error);
-            this.disableSpeechRecognition();
+            console.error('Fehler bei Audio-Aufnahme-Initialisierung:', error);
+            this.disableAudioRecording();
         }
     }
 
@@ -133,7 +107,7 @@ class DreamSphereApp {
             const saveDreamBtn = document.getElementById('save-dream-btn');
             
             if (recordBtn) {
-                recordBtn.addEventListener('click', () => this.toggleSpeechRecognition());
+                recordBtn.addEventListener('click', () => this.toggleAudioRecording());
             }
             
             if (saveDreamBtn) {
@@ -205,6 +179,14 @@ class DreamSphereApp {
             console.log('Verbindung verloren');
             dreamUI.showError('Keine Internetverbindung - Analyse-Funktionen nicht verfügbar');
         });
+
+        // Wake Lock bei Sichtbarkeitswechsel behandeln
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible' && this.isRecording) {
+                // Wake Lock erneuern wenn App wieder sichtbar und Aufnahme läuft
+                await this.requestWakeLock();
+            }
+        });
     }
 
     // URL-Parameter verarbeiten
@@ -221,83 +203,155 @@ class DreamSphereApp {
         }
     }
 
-    // Spracherkennung umschalten
-    toggleSpeechRecognition() {
+    // Audio-Aufnahme umschalten
+    async toggleAudioRecording() {
         try {
-            if (!this.speechRecognition) {
-                dreamUI.showError('Spracherkennung nicht verfügbar');
-                return;
-            }
-
             if (this.isRecording) {
-                this.speechRecognition.stop();
+                // Aufnahme beenden
+                this.stopRecording();
             } else {
-                this.speechRecognition.start();
+                // Aufnahme starten
+                await this.startRecording();
             }
         } catch (error) {
-            console.error('Fehler bei Spracherkennung:', error);
-            dreamUI.showError('Fehler bei der Spracherkennung');
+            console.error('Fehler bei Audio-Aufnahme:', error);
+            dreamUI.showError('Fehler bei der Audio-Aufnahme: ' + error.message);
+            this.isRecording = false;
+            this.updateRecordButton(false);
         }
     }
 
-    // Spracherkennung-Ergebnis verarbeiten
-    handleSpeechResult(event) {
+    // Audio-Aufnahme starten
+    async startRecording() {
         try {
-            let finalTranscript = '';
-            let interimTranscript = '';
+            // Wake Lock anfordern, um Bildschirm-Ausschalten zu verhindern
+            await this.requestWakeLock();
 
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                const transcript = event.results[i][0].transcript;
-                
-                if (event.results[i].isFinal) {
-                    finalTranscript += transcript;
-                } else {
-                    interimTranscript += transcript;
+            // Mikrofon-Stream anfordern
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    sampleRate: 16000
                 }
+            });
+
+            // MediaRecorder erstellen
+            this.mediaRecorder = new MediaRecorder(stream);
+            this.audioChunks = [];
+
+            // Event-Handler
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+
+            this.mediaRecorder.onstop = async () => {
+                console.log('Aufnahme beendet, starte Transkription...');
+
+                // Audio-Blob erstellen
+                const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+
+                // Stream stoppen
+                stream.getTracks().forEach(track => track.stop());
+
+                // Wake Lock freigeben
+                await this.releaseWakeLock();
+
+                // Transkription starten
+                await this.transcribeAudio(audioBlob);
+            };
+
+            // Aufnahme starten
+            this.mediaRecorder.start();
+            this.isRecording = true;
+            this.updateRecordButton(true);
+
+            console.log('Audio-Aufnahme gestartet');
+
+        } catch (error) {
+            // Wake Lock freigeben bei Fehler
+            await this.releaseWakeLock();
+
+            if (error.name === 'NotAllowedError') {
+                dreamUI.showError('Mikrofon-Berechtigung verweigert. Bitte erlaube den Zugriff.');
+            } else if (error.name === 'NotFoundError') {
+                dreamUI.showError('Kein Mikrofon gefunden.');
+            } else {
+                dreamUI.showError('Fehler beim Starten der Aufnahme: ' + error.message);
+            }
+            throw error;
+        }
+    }
+
+    // Audio-Aufnahme stoppen
+    stopRecording() {
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            this.mediaRecorder.stop();
+            this.isRecording = false;
+            this.updateRecordButton(false);
+            console.log('Stoppe Audio-Aufnahme...');
+        }
+    }
+
+    // Audio mit Whisper transkribieren
+    async transcribeAudio(audioBlob) {
+        try {
+            // Zeige "Transkribiere..." im Textfeld
+            const dreamInput = document.getElementById('dream-input');
+            const originalValue = dreamInput ? dreamInput.value : '';
+            const originalPlaceholder = dreamInput ? dreamInput.placeholder : '';
+
+            if (dreamInput) {
+                dreamInput.placeholder = 'Transkribiere...';
+                dreamInput.disabled = true;
             }
 
+            // Konvertiere WebM zu MP3/WAV falls nötig und erstelle FormData
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.webm');
+
+            // API-Request
+            const response = await fetch('./transcribe.php', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Transkription in Textfeld einfügen
+            if (dreamInput && data.text) {
+                const currentText = originalValue.trim();
+                dreamInput.value = currentText + (currentText ? ' ' : '') + data.text;
+                dreamInput.placeholder = originalPlaceholder;
+                dreamInput.disabled = false;
+                dreamInput.focus();
+
+                // Validierung auslösen
+                this.validateDreamForm();
+            }
+
+            dreamUI.showSuccess('Transkription erfolgreich!');
+
+        } catch (error) {
+            console.error('Fehler bei Transkription:', error);
+            dreamUI.showError('Fehler bei der Transkription: ' + error.message);
+
+            // Textfeld wieder aktivieren
             const dreamInput = document.getElementById('dream-input');
             if (dreamInput) {
-                // Füge finalen Text hinzu
-                if (finalTranscript) {
-                    const currentText = dreamInput.value;
-                    dreamInput.value = currentText + (currentText ? ' ' : '') + finalTranscript;
-                }
-                
-                // Zeige vorläufigen Text in Platzhalter
-                if (interimTranscript) {
-                    dreamInput.placeholder = `Erkannt: ${interimTranscript}`;
-                } else {
-                    dreamInput.placeholder = 'Erzähle von deinem Traum...';
-                }
+                dreamInput.placeholder = 'Erzähle von deinem Traum...';
+                dreamInput.disabled = false;
             }
-        } catch (error) {
-            console.error('Fehler bei Spracherkennung-Ergebnis:', error);
         }
-    }
-
-    // Spracherkennung-Fehler behandeln
-    handleSpeechError(error) {
-        let errorMessage = 'Fehler bei der Spracherkennung';
-        
-        switch (error) {
-            case 'no-speech':
-                errorMessage = 'Keine Sprache erkannt. Bitte versuche es erneut.';
-                break;
-            case 'audio-capture':
-                errorMessage = 'Mikrofon nicht verfügbar. Bitte prüfe die Berechtigungen.';
-                break;
-            case 'not-allowed':
-                errorMessage = 'Mikrofon-Berechtigung verweigert. Bitte erlaube den Zugriff.';
-                break;
-            case 'network':
-                errorMessage = 'Netzwerkfehler bei der Spracherkennung.';
-                break;
-        }
-        
-        dreamUI.showError(errorMessage);
-        this.isRecording = false;
-        this.updateRecordButton(false);
     }
 
     // Record-Button aktualisieren
@@ -314,13 +368,46 @@ class DreamSphereApp {
         }
     }
 
-    // Spracherkennung deaktivieren
-    disableSpeechRecognition() {
+    // Audio-Aufnahme deaktivieren
+    disableAudioRecording() {
         const recordBtn = document.getElementById('record-btn');
         if (recordBtn) {
             recordBtn.disabled = true;
             recordBtn.innerHTML = '🎤 Nicht verfügbar';
-            recordBtn.title = 'Spracherkennung wird von diesem Browser nicht unterstützt';
+            recordBtn.title = 'Audio-Aufnahme wird von diesem Browser nicht unterstützt';
+        }
+    }
+
+    // Wake Lock anfordern (verhindert Bildschirm-Ausschalten)
+    async requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                this.wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Wake Lock aktiviert - Bildschirm bleibt an');
+
+                // Event-Listener für Wake Lock Release
+                this.wakeLock.addEventListener('release', () => {
+                    console.log('Wake Lock wurde freigegeben');
+                });
+            } else {
+                console.log('Wake Lock API nicht verfügbar');
+            }
+        } catch (error) {
+            console.error('Wake Lock Fehler:', error);
+            // Fehler nicht an Benutzer weitergeben, da Wake Lock optional ist
+        }
+    }
+
+    // Wake Lock freigeben
+    async releaseWakeLock() {
+        try {
+            if (this.wakeLock !== null) {
+                await this.wakeLock.release();
+                this.wakeLock = null;
+                console.log('Wake Lock manuell freigegeben');
+            }
+        } catch (error) {
+            console.error('Fehler beim Freigeben des Wake Lock:', error);
         }
     }
 
@@ -511,11 +598,11 @@ class DreamSphereApp {
             }
         }
         
-        // Ctrl/Cmd + R: Spracherkennung umschalten
+        // Ctrl/Cmd + R: Audio-Aufnahme umschalten
         if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
             event.preventDefault();
             if (dreamUI.getCurrentView() === 'new-dream') {
-                this.toggleSpeechRecognition();
+                this.toggleAudioRecording();
             }
         }
     }
@@ -571,7 +658,7 @@ class DreamSphereApp {
         return {
             isOnline: this.isOnline,
             isRecording: this.isRecording,
-            speechRecognitionAvailable: !!this.speechRecognition,
+            audioRecordingAvailable: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
             currentView: dreamUI.getCurrentView(),
             isLoading: dreamUI.getLoadingStatus()
         };
