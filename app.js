@@ -153,6 +153,12 @@ class DreamSphereApp {
                 deleteAllAnalysesBtn.addEventListener('click', () => dreamUI.confirmDeleteAllAnalyses());
             }
 
+            // Export-Button
+            const exportDreamsBtn = document.getElementById('export-dreams-btn');
+            if (exportDreamsBtn) {
+                exportDreamsBtn.addEventListener('click', () => this.exportDreams());
+            }
+
             // Keyboard-Shortcuts
             document.addEventListener('keydown', (e) => this.handleKeyboardShortcuts(e));
             
@@ -556,6 +562,66 @@ class DreamSphereApp {
         } catch (error) {
             console.error('Fehler beim Speichern des Traums:', error);
             dreamUI.showError('Fehler beim Speichern des Traums');
+        }
+    }
+
+    // Träume als JSON exportieren
+    async exportDreams() {
+        try {
+            const dreams = dreamStorage.getDreams();
+
+            if (!dreams || dreams.length === 0) {
+                dreamUI.showError('Keine Träume zum Exportieren vorhanden');
+                return;
+            }
+
+            // Export-Daten vorbereiten
+            const exportData = {
+                version: '1.0',
+                exportDate: new Date().toISOString(),
+                dreamCount: dreams.length,
+                dreams: dreams
+            };
+
+            const jsonString = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const fileName = `dreamsphere-export-${new Date().toISOString().split('T')[0]}.json`;
+
+            // Versuche Web Share API für Mobile/WhatsApp/Mail
+            if (navigator.share && navigator.canShare) {
+                try {
+                    const file = new File([blob], fileName, { type: 'application/json' });
+
+                    if (navigator.canShare({ files: [file] })) {
+                        await navigator.share({
+                            files: [file],
+                            title: 'DreamSphere Träume Export',
+                            text: `Export von ${dreams.length} Träumen aus DreamSphere`
+                        });
+                        dreamUI.showSuccess('Export erfolgreich geteilt!');
+                        return;
+                    }
+                } catch (shareError) {
+                    console.log('Web Share API fehlgeschlagen, verwende Download:', shareError);
+                    // Fallback zu Download
+                }
+            }
+
+            // Fallback: Download als Datei
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            dreamUI.showSuccess(`${dreams.length} Träume erfolgreich exportiert!`);
+
+        } catch (error) {
+            console.error('Fehler beim Exportieren der Träume:', error);
+            dreamUI.showError('Fehler beim Exportieren der Träume');
         }
     }
 

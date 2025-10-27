@@ -289,8 +289,15 @@ textarea {
 
 /* Logbook */
 .logbook-header {
-    text-align: center;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: var(--spacing-xl);
+}
+
+.logbook-header > div {
+    text-align: center;
+    flex: 1;
 }
 
 .logbook-header h2 {
