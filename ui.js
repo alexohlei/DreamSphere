@@ -629,7 +629,7 @@ class DreamUI {
                 this.elements.dreamInput.value = '';
             }
             if (this.elements.contextInput) {
-                this.elements.contextInput.value = '';
+                this.elements.contextInput.value = 'Keine Angabe';
             }
         } catch (error) {
             console.error('Fehler beim Zurücksetzen des Formulars:', error);

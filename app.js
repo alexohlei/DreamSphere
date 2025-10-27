@@ -6,6 +6,7 @@ class DreamSphereApp {
         this.mediaRecorder = null;
         this.audioChunks = [];
         this.isRecording = false;
+        this.isTranscribing = false;
         this.isOnline = navigator.onLine;
         this.wakeLock = null;
 
@@ -364,6 +365,8 @@ class DreamSphereApp {
     // Audio mit Whisper transkribieren
     async transcribeAudio(audioBlob) {
         try {
+            this.isTranscribing = true;
+
             // Zeige "Transkribiere..." im Textfeld
             const dreamInput = document.getElementById('dream-input');
             const originalValue = dreamInput ? dreamInput.value : '';
@@ -404,9 +407,17 @@ class DreamSphereApp {
 
                 // Validierung auslösen
                 this.validateDreamForm();
-            }
 
-            dreamUI.showSuccess('Transkription erfolgreich!');
+                // Automatisch speichern nach erfolgreicher Transkription
+                dreamUI.showSuccess('Transkription erfolgreich! Speichere Traum...');
+
+                // Kurze Verzögerung für bessere UX
+                setTimeout(() => {
+                    this.saveDream();
+                }, 500);
+            } else {
+                dreamUI.showSuccess('Transkription erfolgreich!');
+            }
 
         } catch (error) {
             console.error('Fehler bei Transkription:', error);
@@ -418,6 +429,8 @@ class DreamSphereApp {
                 dreamInput.placeholder = 'Erzähle von deinem Traum...';
                 dreamInput.disabled = false;
             }
+        } finally {
+            this.isTranscribing = false;
         }
     }
 
@@ -481,9 +494,24 @@ class DreamSphereApp {
     // Traum speichern
     saveDream() {
         try {
+            // Wenn gerade aufgenommen wird, beende die Aufnahme
+            // (dies startet automatisch die Transkription und das Speichern)
+            if (this.isRecording) {
+                dreamUI.showSuccess('Beende Aufnahme und speichere Traum...');
+                this.stopRecording();
+                return;
+            }
+
+            // Wenn gerade transkribiert wird, warte darauf
+            // (die Transkription wird automatisch speichern)
+            if (this.isTranscribing) {
+                dreamUI.showSuccess('Warte auf Transkription...');
+                return;
+            }
+
             const dreamInput = document.getElementById('dream-input');
             const contextInput = document.getElementById('context-input');
-            
+
             if (!dreamInput) {
                 dreamUI.showError('Traum-Eingabefeld nicht gefunden');
                 return;
